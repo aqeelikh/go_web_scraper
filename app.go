@@ -1,33 +1,44 @@
 package main
 
 import (
-	"fmt"
+	"encoding/csv"
+	"log"
+	"os"
 
 	"github.com/gocolly/colly"
 )
 
 func main() {
+	fName := "cryptocoinmarketcap.csv"
+	file, err := os.Create(fName)
+	if err != nil {
+		log.Fatalf("Cannot create file %q: %s\n", fName, err)
+		return
+	}
+	defer file.Close()
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	// Write CSV header
+	writer.Write([]string{"Name", "Symbol", "Price (USD)", "Volume (USD)", "Market capacity (USD)", "Change (1h)", "Change (24h)", "Change (7d)"})
+
 	// Instantiate default collector
-	c := colly.NewCollector(
-		// Visit only domains: hackerspaces.org, wiki.hackerspaces.org
-		colly.AllowedDomains("hackerspaces.org", "wiki.hackerspaces.org"),
-	)
+	c := colly.NewCollector()
 
-	// On every a element which has href attribute call callback
-	c.OnHTML("a[href]", func(e *colly.HTMLElement) {
-		link := e.Attr("href")
-		// Print link
-		fmt.Printf("Link found: %q -> %s\n", e.Text, link)
-		// Visit link found on page
-		// Only those links are visited which are in AllowedDomains
-		c.Visit(e.Request.AbsoluteURL(link))
+	c.OnHTML(".cmc-table__table-wrapper-outer tbody tr", func(e *colly.HTMLElement) {
+		writer.Write([]string{
+			e.ChildText("td.cmc-table__cell--sort-by__name"),
+			e.ChildText("td.cmc-table__cell--sort-by__symbol"),
+			e.ChildText("td.cmc-table__cell--sort-by__price"),
+			e.ChildText("td.cmc-table__cell--sort-by__volume-24-h"),
+			e.ChildText("td.cmc-table__cell--sort-by__market-cap"),
+			e.ChildText("td.cmc-table__cell--sort-by__percent-change-1-h"),
+			e.ChildText("td.cmc-table__cell--sort-by__percent-change-24-h"),
+			e.ChildText("td.cmc-table__cell--sort-by__percent-change-7-d"),
+		})
 	})
 
-	// Before making a request print "Visiting ..."
-	c.OnRequest(func(r *colly.Request) {
-		fmt.Println("Visiting", r.URL.String())
-	})
+	c.Visit("https://coinmarketcap.com/all/views/all/")
 
-	// Start scraping on https://hackerspaces.org
-	c.Visit("https://hackerspaces.org/")
+	log.Printf("Scraping finished, check file %q for results\n", fName)
 }
